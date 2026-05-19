@@ -1,3 +1,18 @@
 spring:
-  application:
-    name: book-service
+  datasource:
+    url: jdbc:postgresql://127.0.0.1:5432/book_service
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.yaml
