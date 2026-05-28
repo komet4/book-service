@@ -3,6 +3,7 @@ package com.ilya.books.domain.entity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.BatchSize;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -26,6 +27,7 @@ public class Author extends AbstractEntity {
     private LocalDate birthDate;
 
     @OneToMany(mappedBy = "author", cascade = {CascadeType.PERSIST, CascadeType.MERGE}/*, orphanRemoval = true*/)
+    @BatchSize(size = 20)
     private List<Book> books = new ArrayList<>();
 
     public void addBook(Book book) {

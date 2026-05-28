@@ -3,6 +3,12 @@ package com.ilya.books.service;
 import com.ilya.books.domain.entity.Author;
 import com.ilya.books.domain.entity.Book;
 import com.ilya.books.domain.entity.Genre;
+import com.ilya.books.dto.request.AuthorPatchRequestDto;
+import com.ilya.books.dto.request.AuthorRequestDto;
+import com.ilya.books.dto.request.BookRequestDto;
+import com.ilya.books.dto.response.AuthorResponseDto;
+import com.ilya.books.mapper.AuthorMapper;
+import com.ilya.books.mapper.BookMapper;
 import com.ilya.books.repository.AuthorRepository;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.criteria.Predicate;
@@ -17,14 +23,18 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class AuthorService {
 
     private final AuthorRepository authorRepository;
+    private final AuthorMapper authorMapper;
+    private final BookMapper bookMapper;
     private final GenreService genreService;
 
     /**
@@ -32,10 +42,9 @@ public class AuthorService {
      * Если в параметрах запроса не указана сортировка, автоматически применяется сортировка по ID (по возрастанию).
      *
      * @param pageable параметры пагинации и сортировки
-     * @return страница с авторами
+     * @return страница с DTO авторов
      */
-    @Transactional(readOnly = true)
-    public Page<Author> getAllPaged(Pageable pageable) {
+    public Page<AuthorResponseDto> getAllPaged(Pageable pageable) {
         if (pageable.getSort().isUnsorted()) {
             pageable = PageRequest.of(
                     pageable.getPageNumber(),
@@ -44,134 +53,146 @@ public class AuthorService {
             );
         }
 
-        return authorRepository.findAll(pageable);
+        return authorRepository.findAll(pageable)
+                .map(authorMapper::toResponseDto);
     }
 
     /**
      * Возвращает список авторов, соответствующих переданным фильтрам (GET).
      * Поиск по текстовым полям осуществляется по частичному совпадению без учета регистра.
-     * Параметры, переданные как null или пустые строки, игнорируются при фильтрации.
      *
-     * @param firstName  имя автора (или его часть)
-     * @param lastName   фамилия автора (или её часть)
-     * @param middleName отчество автора (или его часть)
-     * @param birthDate  точная дата рождения автора
-     * @return список найденных авторов (или пустой список)
+     * @param firstName  имя автора
+     * @param lastName   фамилия автора
+     * @param middleName отчество автора
+     * @param birthDate  дата рождения автора
+     * @return список найденных DTO авторов
      */
-    @Transactional(readOnly = true)
-    public List<Author> getByFilters(String firstName, String lastName,
-                                     String middleName, LocalDate birthDate) {
-        return authorRepository.findAll((Specification<Author>)
-                (root, query, criteriaBuilder) -> {
-                    List<Predicate> predicates = new ArrayList<>();
+    public List<AuthorResponseDto> getByFilters(String firstName, String lastName,
+                                                String middleName, LocalDate birthDate) {
+        Specification<Author> specification = (root, query, criteriaBuilder) -> {
+            List<Predicate> predicates = new ArrayList<>();
 
-                    if (StringUtils.hasText(firstName)) {
-                        predicates.add(criteriaBuilder.like(
-                                criteriaBuilder.lower(root.get("firstName")), "%" + firstName.toLowerCase() + "%"
-                        ));
-                    }
-                    if (StringUtils.hasText(lastName)) {
-                        predicates.add(criteriaBuilder.like(
-                                criteriaBuilder.lower(root.get("lastName")), "%" + lastName.toLowerCase() + "%"
-                        ));
-                    }
-                    if (StringUtils.hasText(middleName)) {
-                        predicates.add(criteriaBuilder.like(
-                                criteriaBuilder.lower(root.get("middleName")), "%" + middleName.toLowerCase() + "%"
-                        ));
-                    }
-                    if (birthDate != null) {
-                        predicates.add(criteriaBuilder.equal(root.get("birthDate"), birthDate));
-                    }
+            if (StringUtils.hasText(firstName)) {
+                predicates.add(criteriaBuilder.like(
+                        criteriaBuilder.lower(root.get("firstName")), "%" + firstName.toLowerCase() + "%"
+                ));
+            }
+            if (StringUtils.hasText(lastName)) {
+                predicates.add(criteriaBuilder.like(
+                        criteriaBuilder.lower(root.get("lastName")), "%" + lastName.toLowerCase() + "%"
+                ));
+            }
+            if (StringUtils.hasText(middleName)) {
+                predicates.add(criteriaBuilder.like(
+                        criteriaBuilder.lower(root.get("middleName")), "%" + middleName.toLowerCase() + "%"
+                ));
+            }
+            if (birthDate != null) {
+                predicates.add(criteriaBuilder.equal(root.get("birthDate"), birthDate));
+            }
 
-                    return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
-                });
+            return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
+        };
+
+        return authorRepository.findAll(specification).stream()
+                .map(authorMapper::toResponseDto)
+                .toList();
     }
 
     /**
-     * Находит автора по его идентификатору (GET).
+     * Находит автора по ID (GET).
      *
-     * @param authorId уникальный идентификатор автора
-     * @return найденный автор
-     * @throws EntityNotFoundException если автор с указанным id не найден в базе данных
+     * @param id ID автора
+     * @return найденный DTO автора
+     * @throws EntityNotFoundException если автор не найден
      */
-    @Transactional(readOnly = true)
-    public Author getById(Long authorId) {
-        return authorRepository.findById(authorId)
-                .orElseThrow(() -> new EntityNotFoundException(
-                        String.format("Author not found with id: %d!", authorId)));
+    public AuthorResponseDto getById(Long id) {
+        return authorMapper.toResponseDto(getAuthorEntityOrThrow(id));
+    }
+
+    /**
+     * Создает нового автора (POST).
+     *
+     * @param authorRequestDto данные для создания автора
+     * @return DTO созданного автора с сгенерированным ID
+     */
+    @Transactional
+    public AuthorResponseDto create(AuthorRequestDto authorRequestDto) {
+        Author author = authorMapper.toEntity(authorRequestDto);
+        Author savedAuthor = authorRepository.save(author);
+        return authorMapper.toResponseDto(savedAuthor);
     }
 
     /**
      * Добавляет новые книги к уже существующему автору (PUT).
      *
-     * @param authorId уникальный идентификатор автора
-     * @param newBooks список новых книг для добавления
-     * @return обновленный объект автора со списком книг
+     * @param id              ID автора
+     * @param bookRequestDtos список DTO новых книг для добавления
+     * @return обновленный DTO автора со списком книг
      * @throws EntityNotFoundException если автор не найден
      */
     @Transactional
-    public Author addBooksToAuthor(Long authorId, List<Book> newBooks) {
-        Author author = getById(authorId);
+    public AuthorResponseDto addBooksToAuthor(Long id, List<BookRequestDto> bookRequestDtos) {
+        Author author = getAuthorEntityOrThrow(id);
 
-        for (Book book : newBooks) {
-            Genre managedGenre = genreService.getOrCreateByName(book.getGenre().getName());
-            book.setGenre(managedGenre);
+        for (BookRequestDto bookRequestDto : bookRequestDtos) {
+            Book book = bookMapper.toEntity(bookRequestDto);
+            Genre genre = genreService.getOrCreateByName(bookRequestDto.genre().name());
+            book.setGenre(genre);
             author.addBook(book);
         }
 
-        return authorRepository.save(author);
+        Author savedAuthor = authorRepository.save(author);
+        return authorMapper.toResponseDto(savedAuthor);
     }
 
     /**
-     * Выполняет частичное обновление данных автора (PATCH).
-     * Обновляются только те поля, которые были переданы.
+     * Частично обновляет данные автора (PATCH).
+     * Обновляются только те поля, которые были переданы (не null).
      *
-     * @param authorId   уникальный идентификатор автора
-     * @param firstName  новое имя (если требуется обновить)
-     * @param lastName   новая фамилия (если требуется обновить)
-     * @param middleName новое отчество (если требуется обновить)
-     * @param birthDate  новая дата рождения (если требуется обновить)
-     * @return обновленный объект автора
+     * @param id                    ID автора
+     * @param authorPatchRequestDto DTO с изменяемыми полями
+     * @return обновленный DTO автора
      * @throws EntityNotFoundException если автор не найден
      */
     @Transactional
-    public Author partialUpdate(Long authorId, String firstName, String lastName,
-                                String middleName, LocalDate birthDate) {
-        Author author = getById(authorId);
-
-        if (StringUtils.hasText(firstName)) {
-            author.setFirstName(firstName);
-        }
-        if (StringUtils.hasText(lastName)) {
-            author.setLastName(lastName);
-        }
-        if (StringUtils.hasText(middleName)) {
-            author.setMiddleName(middleName);
-        }
-        if (birthDate != null) {
-            author.setBirthDate(birthDate);
-        }
-
-        return authorRepository.save(author);
+    public AuthorResponseDto partialUpdateAuthor(Long id, AuthorPatchRequestDto authorPatchRequestDto) {
+        Author author = getAuthorEntityOrThrow(id);
+        authorMapper.updateEntityFromPatchDto(authorPatchRequestDto, author);
+        Author savedAuthor = authorRepository.save(author);
+        return authorMapper.toResponseDto(savedAuthor);
     }
 
     /**
-     * Выполняет мягкое удаление автора по его идентификатору (DELETE).
+     * Выполняет мягкое удаление автора по ID (DELETE).
      * Удаление запрещено, если у автора есть привязанные книги.
      *
-     * @param authorId уникальный идентификатор автора
-     * @throws EntityNotFoundException if author not found
+     * @param id ID автора
+     * @throws EntityNotFoundException если автор не найден
      * @throws IllegalStateException   если у автора есть книги
      */
     @Transactional
-    public void deleteById(Long authorId) {
-        Author author = getById(authorId);
+    public void deleteAuthorById(Long id) {
+        Author author = getAuthorEntityOrThrow(id);
 
         if (!author.getBooks().isEmpty()) {
             throw new IllegalStateException("Can't delete an author who has books!");
         }
 
-        authorRepository.delete(author);
+        //authorRepository.delete(author);
+        authorRepository.softDeleteWithTimestamp(id, LocalDateTime.now());
+    }
+
+    /**
+     * Получение автора по ID.
+     *
+     * @param id ID автора
+     * @return найденный автор
+     * @throws EntityNotFoundException если автор не найден
+     */
+    private Author getAuthorEntityOrThrow(Long id) {
+        return authorRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException(
+                        String.format("Author not found with id: %d!", id)));
     }
 }

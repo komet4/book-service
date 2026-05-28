@@ -13,11 +13,11 @@ public class Book extends AbstractEntity {
     @Column(nullable = false, unique = true)
     private String isbn;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "author_id", nullable = false)
     private Author author;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "genre_id", nullable = false)
     private Genre genre;
 

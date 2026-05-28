@@ -5,19 +5,17 @@ import com.ilya.books.dto.request.AuthorPatchRequestDto;
 import com.ilya.books.dto.request.AuthorRequestDto;
 import com.ilya.books.dto.response.AuthorResponseDto;
 import com.ilya.books.dto.response.BookResponseDto;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
 import java.util.List;
 
 @Component
+@RequiredArgsConstructor
 public class AuthorMapper {
 
     private final BookMapper bookMapper;
-
-    public AuthorMapper(BookMapper bookMapper) {
-        this.bookMapper = bookMapper;
-    }
 
     public Author toEntity(AuthorRequestDto dto) {
         if (dto == null) {
@@ -40,7 +38,7 @@ public class AuthorMapper {
         if (author.getBooks() != null) {
             bookDtos = author.getBooks().stream()
                     .map(bookMapper::toResponseDto)
-                    .toList(); // В Java 21 используем лаконичный .toList() вместо Collectors.toList()
+                    .toList();
         }
 
         return new AuthorResponseDto(
@@ -53,20 +51,23 @@ public class AuthorMapper {
         );
     }
 
-    // Метод для PATCH: обновляем только то, что пришло
     public void updateEntityFromPatchDto(AuthorPatchRequestDto dto, Author author) {
         if (dto == null || author == null) {
             return;
         }
+
         if (dto.firstName() != null) {
             author.setFirstName(dto.firstName());
         }
+
         if (dto.lastName() != null) {
             author.setLastName(dto.lastName());
         }
-        if (dto.middleName() != null) {
-            author.setMiddleName(dto.middleName());
+
+        if (dto.middleName() != null && dto.middleName().isPresent()) {
+            author.setMiddleName(dto.middleName().get());
         }
+
         if (dto.birthDate() != null) {
             author.setBirthDate(dto.birthDate());
         }
